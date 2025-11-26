@@ -14,7 +14,12 @@ Le BMP280 propose deux adresses I²C selon la broche SDO :
 | GND | 0x76 |
 | VDDIO | 0x77 |
 
-Voir datasheet BMP280 section I²C Interface, page 28 : [BMP280_Datasheet.pdf](./docs/BMP280_Datasheet.pdf)
+Voir le shematic Grove - IMU 10DOF v2.0 & datasheet BMP280 section I²C Interface, page 28 : 
+
+[Grove - IMU 10DOF v2.0 Sch.pdf](./docs/Grove-IMU_10DOF_v2.0_Sch.pdf)
+[BMP280_Datasheet.pdf](./docs/BMP280_Datasheet.pdf)
+
+![Figure 00](Photos/shematic.png)
 
 ![Figure 01](Photos/data_sheet.png)
 
