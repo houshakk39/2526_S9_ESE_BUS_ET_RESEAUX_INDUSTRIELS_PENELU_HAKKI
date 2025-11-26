@@ -137,3 +137,49 @@ Voir datasheet BMP280 section Compensation formula, page 21 : [BMP280_Datasheet.
 
 ![Figure 10](Photos/compensation_formula.png)
 
+---
+
+## 2.2 – Setup du STM32
+
+### 🎯 Objectif
+Configurer le STM32 pour :
+- Initialiser les périphériques nécessaires (I²C, UART2, CAN)
+- Permettre la communication UART → USB (ST-Link)
+- Rediriger `printf()` vers l’UART pour faciliter les tests et le débogage
+- Vérifier la configuration via STM32CubeIDE (IOC) et via le terminal série
+
+---
+
+### Configuration matérielle (CubeMX / .IOC)
+
+La carte Grove IMU 10DOF v2.0 utilise un BMP280 connecté en I²C.  
+Voir le shematic Grove - IMU 10DOF v2.0 : 
+
+[Grove - IMU 10DOF v2.0 Sch.pdf](./docs/Grove-IMU_10DOF_v2.0_Sch.pdf)
+
+####  Configuration CubeMX
+Voici la configuration utilisée dans le fichier `.ioc` :
+
+![Figure 11](Photos/ioc.png)
+![Figure 12](Photos/peripherals.png)
+
+UART2 est configuré en mode **Asynchronous** à **115200 bauds**, ce qui permet de rediriger `printf()` vers le terminal USB-STLink.
+
+---
+
+### Redirection du printf() vers l’UART
+![Figure 13](Photos/redirect_uart_function.png)
+![Figure 14](Photos/fonction__io_putchar.png)
+
+
+Teste de ce printf avec un programme de type echo.
+####  Pourquoi dans stm32f4xx_hal_msp.c ?
+Sur un STM32 :
+- Le fichier MSP est le bon endroit pour mettre les fonctions de bas niveau utilisées par HAL
+- Il est chargé avant le main, donc printf fonctionne dès le début
+- Il n’est pas écrasé par CubeMX contrairement à main.c
+- La HAL appelle automatiquement les fonctions MSP grâce au faible linkage (__weak)
+```c
+printf("Hello\n");
+```
+
