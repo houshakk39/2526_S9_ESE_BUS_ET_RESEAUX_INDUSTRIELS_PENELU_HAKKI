@@ -53,3 +53,71 @@ dkms.conf
 
 # debug information files
 *.dwo
+#############################################################
+# --------- PYTHON ------------------------------------------
+#############################################################
+# Bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+env/
+venv/
+.venv/
+
+# Packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Jupyter
+.ipynb_checkpoints/
+
+#############################################################
+# --------- HTML / WEB --------------------------------------
+#############################################################
+# Node / frontend
+node_modules/
+dist/
+build/
+
+# Temporary / logs
+*.log
+*.cache
+*.tmp
+*.swp
+
+#############################################################
+# --------- OS / IDE FILES ----------------------------------
+#############################################################
+# macOS / Windows
+.DS_Store
+Thumbs.db
+
+# VSCode
+.vscode/
+
+# JetBrains (CLion / PyCharm)
+.idea/
+
+# STM32CubeIDE / Eclipse
+.metadata/
+.settings/
+Debug/
+Release/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+install_manifest.txt
+cmake_install.cmake
+compile_commands.json
+
+#############################################################
+# --------- LOCAL CUSTOM ------------------------------------
+#############################################################
+# local ignore overrides
+.gitignore-local
