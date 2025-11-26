@@ -31,7 +31,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define BMP280_I2C_ADDR  (0x77 << 1)	// R/W bit available
+#define BMP280_REG_ID    0xD0			// id
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -64,6 +65,36 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void bmp280_read_id(void)
+{
+	uint8_t id = 0;
+	HAL_StatusTypeDef ret;
+
+	ret = HAL_I2C_Mem_Read(&hi2c1,
+			BMP280_I2C_ADDR,      // (0x77 << 1)
+			BMP280_REG_ID,        // 0xD0
+			I2C_MEMADD_SIZE_8BIT,
+			&id,
+			1,
+			HAL_MAX_DELAY);
+
+	if (ret == HAL_OK)
+	{
+		printf("BMP280 ID = 0x%02X\r\n", id);
+		if (id == 0x58)
+		{
+			printf("Identification OK (0x58 attendu)\r\n");
+		}
+		else
+		{
+			printf("Mauvaise ID (attendu 0x58)\r\n");
+		}
+	}
+	else
+	{
+        printf("Erreur I2C lors de la lecture de l'ID (ret = %d)\r\n", ret);
+	}
+}
 
 /* USER CODE END 0 */
 
@@ -102,21 +133,25 @@ int main(void)
 	MX_USART1_UART_Init();
 	/* USER CODE BEGIN 2 */
 
-	printf("=== Test UART2 Echo ===\r\n");
+	/*printf("=== Test UART2 Echo ===\r\n");
 	printf("Tapez quelque chose...\r\n");
 
-	uint8_t rx_char;
+	uint8_t rx_char;*/
+
+	printf("\r\n=== Test BMP280: lecture ID ===\r\n");
+
+	bmp280_read_id();
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 	while (1)
 	{
-		if (HAL_UART_Receive(&huart2, &rx_char, 1, HAL_MAX_DELAY) == HAL_OK)
+		/*if (HAL_UART_Receive(&huart2, &rx_char, 1, HAL_MAX_DELAY) == HAL_OK)
 		{
 			HAL_UART_Transmit(&huart2, &rx_char, 1, HAL_MAX_DELAY);
 			//printf("%c", rx_char);
-		}
+		}*/
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
