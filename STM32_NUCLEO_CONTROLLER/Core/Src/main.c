@@ -21,7 +21,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "bmp280.h"
 #include <stdio.h>
+#include <stdint.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,8 +33,12 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define BMP280_I2C_ADDR  (0x77 << 1)	// R/W bit available
-#define BMP280_REG_ID    0xD0			// id
+#define BMP280_I2C_ADDR			(0x77 << 1)	// R/W bit available
+#define BMP280_REG_ID			0xD0		// id
+#define BMP280_REG_CTRL_MEAS	0xF4
+#define BMP280_REG_CALIB_START	0x88
+#define BMP280_CALIB_LENGTH		26      // 0x88 -> 0xA1 inclus
+#define BMP280_REG_PRESS_TEMP	0xF7  // début des registres press/temp
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -49,7 +55,29 @@ UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+typedef struct
+{
+	uint16_t dig_T1;
+	int16_t  dig_T2;
+	int16_t  dig_T3;
+	uint16_t dig_P1;
+	int16_t  dig_P2;
+	int16_t  dig_P3;
+	int16_t  dig_P4;
+	int16_t  dig_P5;
+	int16_t  dig_P6;
+	int16_t  dig_P7;
+	int16_t  dig_P8;
+	int16_t  dig_P9;
+} bmp280_calib_data_t;
 
+bmp280_calib_data_t bmp280_calib;
+
+typedef long signed int   BMP280_S32_t;
+typedef long unsigned int BMP280_U32_t;
+
+/* t_fine : variable globale utilisée par les 2 formules (datasheet) */
+BMP280_S32_t t_fine;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -92,8 +120,204 @@ void bmp280_read_id(void)
 	}
 	else
 	{
-        printf("Erreur I2C lors de la lecture de l'ID (ret = %d)\r\n", ret);
+		printf("Erreur I2C lors de la lecture de l'ID (ret = %d)\r\n", ret);
 	}
+}
+
+void bmp280_configure(void)
+{
+	HAL_StatusTypeDef ret;
+	uint8_t value, readback;
+
+	// mode normal, osrs_p x16, osrs_t x2
+	value = 0x57;  // 010 101 11
+
+	ret = HAL_I2C_Mem_Write(&hi2c1,
+			BMP280_I2C_ADDR,
+			BMP280_REG_CTRL_MEAS,
+			I2C_MEMADD_SIZE_8BIT,
+			&value,
+			1,
+			HAL_MAX_DELAY);
+
+	if (ret != HAL_OK)
+	{
+		printf("Erreur I2C ecriture\r\n");
+		return;
+	}
+
+	ret = HAL_I2C_Mem_Read(&hi2c1,
+			BMP280_I2C_ADDR,
+			BMP280_REG_CTRL_MEAS,
+			I2C_MEMADD_SIZE_8BIT,
+			&readback,
+			1,
+			HAL_MAX_DELAY);
+
+	if (ret != HAL_OK)
+	{
+		printf("Erreur I2 lecture\r\n");
+		return;
+	}
+
+	printf("CTRL_MEAS ecrit = 0x%02X, lu = 0x%02X\r\n", value, readback);
+
+	if (readback == value)
+	{
+		printf("Configuration BMP280 OK\r\n");
+	}
+	else
+	{
+		printf("Configuration BMP280 INCORRECTE\r\n");
+	}
+}
+
+void bmp280_read_raw(uint32_t *raw_temp, uint32_t *raw_press)
+{
+	uint8_t data[6];
+	HAL_StatusTypeDef ret;
+
+	ret = HAL_I2C_Mem_Read(&hi2c1,
+			BMP280_I2C_ADDR,
+			BMP280_REG_PRESS_TEMP,
+			I2C_MEMADD_SIZE_8BIT,
+			data,
+			6,
+			HAL_MAX_DELAY);
+
+	if (ret != HAL_OK)
+	{
+		printf("Erreur I2C lecture pression/temperature (ret = %d)\r\n", ret);
+		*raw_temp  = 0;
+		*raw_press = 0;
+		return;
+	}
+
+	// 20 bits non signes
+	*raw_press  = ((uint32_t)data[0] << 12) |
+			((uint32_t)data[1] << 4)  |
+			((uint32_t)data[2] >> 4);
+
+	*raw_temp   = ((uint32_t)data[3] << 12) |
+			((uint32_t)data[4] << 4)  |
+			((uint32_t)data[5] >> 4);
+}
+
+void bmp280_read_calibration(void)
+{
+	uint8_t buf[BMP280_CALIB_LENGTH];
+	HAL_StatusTypeDef ret;
+
+	ret = HAL_I2C_Mem_Read(&hi2c1,
+			BMP280_I2C_ADDR,
+			BMP280_REG_CALIB_START,
+			I2C_MEMADD_SIZE_8BIT,
+			buf,
+			BMP280_CALIB_LENGTH,
+			HAL_MAX_DELAY);
+
+	if (ret != HAL_OK)
+	{
+		printf("Erreur I2C lors de la lecture de l'etalonage (ret = %d)\r\n", ret);
+		return;
+	}
+
+	// Mapping d'après la datasheet (LSB, MSB)
+	bmp280_calib.dig_T1 = (uint16_t)(buf[1]  << 8 | buf[0]);
+	bmp280_calib.dig_T2 = (int16_t) (buf[3]  << 8 | buf[2]);
+	bmp280_calib.dig_T3 = (int16_t) (buf[5]  << 8 | buf[4]);
+
+	bmp280_calib.dig_P1 = (uint16_t)(buf[7]  << 8 | buf[6]);
+	bmp280_calib.dig_P2 = (int16_t) (buf[9]  << 8 | buf[8]);
+	bmp280_calib.dig_P3 = (int16_t) (buf[11] << 8 | buf[10]);
+	bmp280_calib.dig_P4 = (int16_t) (buf[13] << 8 | buf[12]);
+	bmp280_calib.dig_P5 = (int16_t) (buf[15] << 8 | buf[14]);
+	bmp280_calib.dig_P6 = (int16_t) (buf[17] << 8 | buf[16]);
+	bmp280_calib.dig_P7 = (int16_t) (buf[19] << 8 | buf[18]);
+	bmp280_calib.dig_P8 = (int16_t) (buf[21] << 8 | buf[20]);
+	bmp280_calib.dig_P9 = (int16_t) (buf[23] << 8 | buf[22]);
+
+	printf("Calibration lue (dig_T1 = %u, dig_P1 = %u ...)\r\n",
+			bmp280_calib.dig_T1, bmp280_calib.dig_P1);
+}
+
+/* Alias pour coller aux noms de la datasheet */
+#define dig_T1 (bmp280_calib.dig_T1)
+#define dig_T2 (bmp280_calib.dig_T2)
+#define dig_T3 (bmp280_calib.dig_T3)
+
+#define dig_P1 (bmp280_calib.dig_P1)
+#define dig_P2 (bmp280_calib.dig_P2)
+#define dig_P3 (bmp280_calib.dig_P3)
+#define dig_P4 (bmp280_calib.dig_P4)
+#define dig_P5 (bmp280_calib.dig_P5)
+#define dig_P6 (bmp280_calib.dig_P6)
+#define dig_P7 (bmp280_calib.dig_P7)
+#define dig_P8 (bmp280_calib.dig_P8)
+#define dig_P9 (bmp280_calib.dig_P9)
+
+// Retourne la température en 0.01 °C
+// Exemple : 5123 -> 51.23 °C
+BMP280_S32_t bmp280_compensate_T_int32(BMP280_S32_t adc_T)
+{
+	BMP280_S32_t var1, var2, T;
+
+	var1 = ((((adc_T >> 3) - ((BMP280_S32_t)dig_T1 << 1))) *
+			((BMP280_S32_t)dig_T2)) >> 11;
+
+	var2 = (((((adc_T >> 4) - ((BMP280_S32_t)dig_T1)) *
+			((adc_T >> 4) - ((BMP280_S32_t)dig_T1))) >> 12) *
+			((BMP280_S32_t)dig_T3)) >> 14;
+
+	t_fine = var1 + var2;
+	T = (t_fine * 5 + 128) >> 8;
+
+	return T;  // en 0.01 °C
+}
+
+// Retourne la pression en Pa, entier 32 bits non signé
+// Exemple : 96386 -> 96386 Pa = 963.86 hPa
+BMP280_U32_t bmp280_compensate_P_int32(BMP280_S32_t adc_P)
+{
+	BMP280_S32_t var1, var2;
+	BMP280_U32_t p;
+
+	var1 = (((BMP280_S32_t)t_fine) >> 1) - (BMP280_S32_t)64000;
+
+	var2 = (((var1 >> 2) * (var1 >> 2)) >> 11) * ((BMP280_S32_t)dig_P6);
+	var2 = var2 + ((var1 * ((BMP280_S32_t)dig_P5)) << 1);
+	var2 = (var2 >> 2) + (((BMP280_S32_t)dig_P4) << 16);
+
+	var1 = (((((BMP280_S32_t)dig_P3) *
+			(((var1 >> 2) * (var1 >> 2)) >> 13)) >> 3) +
+			((((BMP280_S32_t)dig_P2) * var1) >> 1)) >> 18;
+
+	var1 = ((((BMP280_S32_t)32768 + var1)) * ((BMP280_S32_t)dig_P1)) >> 15;
+
+	if (var1 == 0)
+	{
+		return 0; // éviter division par zéro
+	}
+
+	p = (((BMP280_U32_t)(((BMP280_S32_t)1048576) - adc_P) - (var2 >> 12))) * 3125;
+
+	if (p < 0x80000000)
+	{
+		p = (p << 1) / ((BMP280_U32_t)var1);
+	}
+	else
+	{
+		p = (p / (BMP280_U32_t)var1) * 2;
+	}
+
+	var1 = (((BMP280_S32_t)dig_P9) *
+			((BMP280_S32_t)(((p >> 3) * (p >> 3)) >> 13))) >> 12;
+
+	var2 = (((BMP280_S32_t)(p >> 2)) * ((BMP280_S32_t)dig_P8)) >> 13;
+
+	p = (BMP280_U32_t)((BMP280_S32_t)p + ((var1 + var2 + dig_P7) >> 4));
+
+	return p;  // en Pa
 }
 
 /* USER CODE END 0 */
@@ -132,26 +356,45 @@ int main(void)
 	MX_I2C1_Init();
 	MX_USART1_UART_Init();
 	/* USER CODE BEGIN 2 */
+	printf("\r\n=== BMP280: init ===\r\n");
 
-	/*printf("=== Test UART2 Echo ===\r\n");
-	printf("Tapez quelque chose...\r\n");
+	bmp280_configure();        // mode normal, osrs_p x16, osrs_t x2
+	bmp280_read_calibration(); // étalonnage -> bmp280_calib
 
-	uint8_t rx_char;*/
-
-	printf("\r\n=== Test BMP280: lecture ID ===\r\n");
-
-	bmp280_read_id();
+	uint32_t raw_temp, raw_press;
+	BMP280_S32_t T;
+	BMP280_U32_t P;
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 	while (1)
 	{
-		/*if (HAL_UART_Receive(&huart2, &rx_char, 1, HAL_MAX_DELAY) == HAL_OK)
-		{
-			HAL_UART_Transmit(&huart2, &rx_char, 1, HAL_MAX_DELAY);
-			//printf("%c", rx_char);
-		}*/
+		bmp280_read_raw(&raw_temp, &raw_press);
+
+		// Compensation (entier 32 bits)
+		T = bmp280_compensate_T_int32((BMP280_S32_t)raw_temp);
+		P = bmp280_compensate_P_int32((BMP280_S32_t)raw_press);
+
+		// T est en 0.01 °C
+		int32_t temp_centi = (int32_t)T;
+		int32_t temp_int   = temp_centi / 100;
+		int32_t temp_frac  = temp_centi % 100;
+		if (temp_frac < 0) temp_frac = -temp_frac; // au cas où T < 0
+
+		// P est en Pa → on formate aussi en hPa sans float
+		uint32_t press_pa      = (uint32_t)P;
+		uint32_t press_hpa_int = press_pa / 100;
+		uint32_t press_hpa_fr  = press_pa % 100;
+
+		printf("T = %ld.%02ld C,  P = %lu.%02lu hPa (%lu Pa)\r\n",
+				(long)temp_int,
+				(long)temp_frac,
+				(unsigned long)press_hpa_int,
+				(unsigned long)press_hpa_fr,
+				(unsigned long)press_pa);
+
+		HAL_Delay(500);
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */

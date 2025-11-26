@@ -115,7 +115,7 @@ int main(void)
 		if (HAL_UART_Receive(&huart2, &rx_char, 1, HAL_MAX_DELAY) == HAL_OK)
 		{
 			HAL_UART_Transmit(&huart2, &rx_char, 1, HAL_MAX_DELAY);
-			printf("%c", rx_char);
+			//printf("%c", rx_char);
 		}
 		/* USER CODE END WHILE */
 
