@@ -1,0 +1,5 @@
+Peripherals started (I²C, UART2, CAN) and echo test.
+printf was enabled in the file stm32f4xx_hal_uart.c and is now used in the code.
+Speed 115200 (asynchronous)
+The first two printf before the while loop are printed in the terminal
+HAL_UART_Receive registers he char in the rx_char variable and send it to the same terminal with HAL_UART_Transmit. It can also be sent with the function printf (now enabled)
