@@ -195,6 +195,8 @@ Teste de ce printf avec un programme de type echo.
 		/* USER CODE END WHILE */
 ```
 
+![Figure 15](Photos/echo.png)
+
 ####  Pourquoi dans stm32f4xx_hal_msp.c ?
 Sur un STM32 :
 - Le fichier MSP est le bon endroit pour mettre les fonctions de bas niveau utilisées par HAL
