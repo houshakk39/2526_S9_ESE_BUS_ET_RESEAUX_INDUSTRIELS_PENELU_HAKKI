@@ -21,7 +21,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "bmp280.h"
 #include <stdio.h>
+#include <stdint.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,8 +33,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define BMP280_I2C_ADDR  (0x77 << 1)	// R/W bit available
-#define BMP280_REG_ID    0xD0			// id
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -49,7 +49,6 @@ UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -65,36 +64,6 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void bmp280_read_id(void)
-{
-	uint8_t id = 0;
-	HAL_StatusTypeDef ret;
-
-	ret = HAL_I2C_Mem_Read(&hi2c1,
-			BMP280_I2C_ADDR,      // (0x77 << 1)
-			BMP280_REG_ID,        // 0xD0
-			I2C_MEMADD_SIZE_8BIT,
-			&id,
-			1,
-			HAL_MAX_DELAY);
-
-	if (ret == HAL_OK)
-	{
-		printf("BMP280 ID = 0x%02X\r\n", id);
-		if (id == 0x58)
-		{
-			printf("Identification OK (0x58 attendu)\r\n");
-		}
-		else
-		{
-			printf("Mauvaise ID (attendu 0x58)\r\n");
-		}
-	}
-	else
-	{
-        printf("Erreur I2C lors de la lecture de l'ID (ret = %d)\r\n", ret);
-	}
-}
 
 /* USER CODE END 0 */
 
@@ -132,22 +101,52 @@ int main(void)
 	MX_I2C1_Init();
 	MX_USART1_UART_Init();
 	/* USER CODE BEGIN 2 */
+	BMP280_HandleTypedef bmp;
+	HAL_StatusTypeDef ret;
+	uint8_t id = 0;
 
-	/*printf("=== Test UART2 Echo ===\r\n");
-	printf("Tapez quelque chose...\r\n");
+	printf("\r\n=== BMP280: init ===\r\n");
 
-	uint8_t rx_char;*/
+	ret = BMP280_Init(&bmp, &hi2c1, BMP280_I2C_ADDR_DEFAULT);
+	if (ret != HAL_OK)
+	{
+		printf("Erreur init BMP280 (ret = %d)\r\n", ret);
+	}
 
-	printf("\r\n=== Test BMP280: lecture ID ===\r\n");
+	BMP280_ReadID(&bmp, &id);
+	printf("ID BMP280 = 0x%02X (attendu 0x58)\r\n", id);
 
+	uint32_t raw_temp, raw_press;
+	BMP280_S32_t T;
+	BMP280_U32_t P;
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 	while (1)
 	{
-		bmp280_read_id();
-		HAL_Delay(300);
+		BMP280_ReadRaw(&bmp, &raw_temp, &raw_press);
+
+		T = BMP280_Compensate_T_int32(&bmp, (BMP280_S32_t)raw_temp);
+		P = BMP280_Compensate_P_int32(&bmp, (BMP280_S32_t)raw_press);
+
+		int32_t temp_centi = (int32_t)T;
+		int32_t temp_int   = temp_centi / 100;
+		int32_t temp_frac  = temp_centi % 100;
+		if (temp_frac < 0) temp_frac = -temp_frac;
+
+		uint32_t press_pa      = (uint32_t)P;
+		uint32_t press_hpa_int = press_pa / 100;
+		uint32_t press_hpa_fr  = press_pa % 100;
+
+		printf("T = %ld.%02ld C,  P = %lu.%02lu hPa (%lu Pa)\r\n",
+				(long)temp_int,
+				(long)temp_frac,
+				(unsigned long)press_hpa_int,
+				(unsigned long)press_hpa_fr,
+				(unsigned long)press_pa);
+
+		HAL_Delay(500);
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
