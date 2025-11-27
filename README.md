@@ -204,4 +204,177 @@ Sur un STM32 :
 - Il n’est pas écrasé par CubeMX contrairement à main.c
 - La HAL appelle automatiquement les fonctions MSP grâce au faible linkage (__weak)
 
+---
 
+# 2.3 Communication avec le BMP280
+
+## 2.3.1 – Identification du BMP280
+
+### 🎯 Objectif
+
+Lire le registre **ID (0xD0)** du BMP280 en mode I²C et vérifier que la valeur retournée correspond bien à celle indiquée dans la datasheet (**0x58**).
+
+---
+
+### 📌 Adresse et registre utilisés
+
+Dans le code, l’adresse I²C et le registre d’identification sont définis comme suit :
+
+```c
+#define BMP280_I2C_ADDR   (0x77 << 1)   // Adresse 7 bits = 0x77
+#define BMP280_REG_ID     0xD0          // Registre d'identification
+```
+
+Comme indiqué précédemment (section *Registre d’identification*, Figure 02), la valeur attendue est **0x58**.
+
+---
+
+### 🔍 Procédure de lecture I²C
+
+La lecture d’un registre via la HAL du STM32 se fait avec :
+
+```c
+HAL_I2C_Mem_Read(&hi2c1,
+			BMP280_I2C_ADDR,      // (0x77 << 1)
+			BMP280_REG_ID,        // 0xD0
+			I2C_MEMADD_SIZE_8BIT,
+			&id,
+			1,
+			HAL_MAX_DELAY)
+```
+
+Étapes I²C correspondantes :
+
+1. Envoi de l’adresse du registre (**0xD0**)
+2. Lecture d’un octet
+3. Vérification de la valeur retournée (doit être **0x58**)
+
+---
+
+### 🖥️ Résultat côté terminal
+
+Une fois la lecture réalisée, le terminal affiche :
+
+```
+=== Test BMP280: lecture ID ===
+BMP280 ID = 0x58
+Identification OK (0x58 attendu)
+```
+
+Ce qui confirme que le capteur BMP280 est correctement détecté sur le bus I²C.
+
+---
+
+### 📡 Vérification à l’oscilloscope
+
+La trame I²C observée correspond bien au schéma suivant :
+
+* Start condition
+* Adresse 0x77 + bit R/W
+* Envoi du registre 0xD0
+* Redémarrage (Repeated START)
+* Lecture du byte 0x58
+* Stop condition
+
+👉 Cf. capture d’écran :
+
+![Figure Oscilloscope](Photos/oscillo.png)
+
+---
+
+## 2.3.2 – Configuration du BMP280
+
+### 🎯 Objectif
+
+Passer le BMP280 en **mode NORMAL**, avec :
+
+* **Temperature oversampling = ×2**
+* **Pressure oversampling = ×16**
+* **Mode = Normal**
+
+---
+
+### 📌 Registre utilisé : CTRL_MEAS (0xF4)
+
+Conformément à la section précédente du README (Figure 03), le registre CTRL_MEAS contient :
+
+| Bits | Champ  | Description              |
+| ---- | ------ | ------------------------ |
+| 7:5  | osrs_t | Oversampling température |
+| 4:2  | osrs_p | Oversampling pression    |
+| 1:0  | mode   | Mode d’alimentation      |
+
+Configuration demandée :
+
+* osrs_t = `010` (×2)
+* osrs_p = `101` (×16)
+* mode   = `11`  (normal mode)
+
+Ce qui donne :
+
+```
+0b01010111 = 0x57
+```
+
+---
+
+### 📝 Écriture I²C dans CTRL_MEAS
+
+L’écriture du registre s’effectue avec :
+
+```c
+// mode normal, osrs_p x16, osrs_t x2
+value = 0x57;  // 010 101 11
+
+ret = HAL_I2C_Mem_Write(&hi2c1,
+		BMP280_I2C_ADDR,
+		BMP280_REG_CTRL_MEAS,
+		I2C_MEMADD_SIZE_8BIT,
+		&value,
+		1,
+		HAL_MAX_DELAY);
+```
+
+---
+
+### 🔄 Vérification de la configuration
+
+Après l’écriture, une lecture du même registre est réalisée :
+
+```c
+ret = HAL_I2C_Mem_Read(&hi2c1,
+			BMP280_I2C_ADDR,
+			BMP280_REG_CTRL_MEAS,
+			I2C_MEMADD_SIZE_8BIT,
+			&readback,
+			1,
+			HAL_MAX_DELAY);
+            
+printf("CTRL_MEAS ecrit = 0x%02X, lu = 0x%02X\r\n", value, readback);
+
+	if (readback == value)
+	{
+		printf("Configuration BMP280 OK\r\n");
+	}
+	else
+	{
+		printf("Configuration BMP280 INCORRECTE\r\n");
+	}
+```
+
+Résultat attendu dans le terminal :
+
+```
+Configuration BMP280 OK
+```
+
+---
+
+### 🖥️ Affichage terminal et capture
+
+Voir la capture suivante montrant :
+
+* Le registre ID correctement lu
+* Le registre CTRL_MEAS configuré et confirmé
+
+![Figure Config](Photos/regID_config.png)

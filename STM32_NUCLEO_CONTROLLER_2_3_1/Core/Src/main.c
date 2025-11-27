@@ -139,15 +139,13 @@ int main(void)
 	uint8_t rx_char;*/
 
 	printf("\r\n=== Test BMP280: lecture ID ===\r\n");
-
+	bmp280_read_id();
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 	while (1)
 	{
-		bmp280_read_id();
-		HAL_Delay(300);
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
