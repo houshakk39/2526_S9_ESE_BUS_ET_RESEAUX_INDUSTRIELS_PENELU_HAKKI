@@ -25,6 +25,8 @@
 #include "mpu9250.h"
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -50,9 +52,8 @@ UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-mpu9250_raw_data_t imu;
-int32_t ax_mg, ay_mg, az_mg;
-int32_t gx_mdps, gy_mdps, gz_mdps;
+BMP280_HandleTypedef bmp;
+mpu9250_raw_data_t   imu;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -68,6 +69,167 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+/* Valeurs globales compensées / calculées */
+static volatile int32_t  g_temp_centi  = 0;   // T en 0.01°C
+static volatile uint32_t g_press_pa    = 0;   // P en Pa
+static volatile int32_t  g_angle_milli = 0;   // angle en 0.001 deg (placeholder)
+
+/* Coefficient K stocké en 1/100 (SET_K=1234 -> K = 12.34) */
+static volatile int32_t  g_K_centi     = 100; // valeur par défaut : 1.00
+
+/* Buffer de réception UART1 (pour les commandes venant du RPi) */
+#define CMD_BUF_LEN   32
+static char    g_cmd_buf[CMD_BUF_LEN];
+static uint8_t g_cmd_idx = 0;
+
+static void Sensors_Update(void)
+{
+	uint32_t raw_temp, raw_press;
+	BMP280_S32_t T;
+	BMP280_U32_t P;
+
+	if (BMP280_ReadRaw(&bmp, &raw_temp, &raw_press) == HAL_OK)
+	{
+		T = BMP280_Compensate_T_int32(&bmp, (BMP280_S32_t)raw_temp);
+		P = BMP280_Compensate_P_int32(&bmp, (BMP280_S32_t)raw_press);
+
+		g_temp_centi = (int32_t)T;
+		g_press_pa   = (uint32_t)P;
+	}
+
+	/* Lecture du MPU9250 (optionnel pour l'angle) */
+	if (mpu9250_read_raw(&imu) == HAL_OK)
+	{
+		/* TODO: calcul de l’angle à partir de l’accéléro/gyro.
+		 * Pour l'instant, on met un placeholder à 0.000 deg.
+		 */
+		g_angle_milli = 0;
+	}
+}
+static void Protocol_SendString(const char *s)
+{
+	/* Envoi uniquement sur UART1 vers Raspberry (printf já manda nos dois) */
+	HAL_UART_Transmit(&huart1, (uint8_t *)s, (uint16_t)strlen(s), HAL_MAX_DELAY);
+}
+
+/**
+ * @brief  Traite une commande complète reçue sur UART1 (sans \r\n).
+ *
+ * @param  cmd  Chaîne C terminée par '\0', par exemple "GET_T".
+ */
+static void Protocol_HandleCommand(const char *cmd)
+{
+	char tx[32];
+
+	/* Commande GET_T : T=+12.50_C  (format lisible) */
+	if (strncmp(cmd, "GET_T", 5) == 0)
+	{
+		int32_t t = g_temp_centi;
+		char sign = '+';
+		if (t < 0)
+		{
+			sign = '-';
+			t = -t;
+		}
+		int32_t t_int  = t / 100;
+		int32_t t_frac = t % 100;
+
+		/* Exemple de format : T=+12.34_C */
+		snprintf(tx, sizeof(tx), "T=%c%02ld.%02ld_C\r\n",
+				sign, (long)t_int, (long)t_frac);
+		Protocol_SendString(tx);
+	}
+	/* Commande GET_P : P=102300Pa */
+	else if (strncmp(cmd, "GET_P", 5) == 0)
+	{
+		uint32_t p = g_press_pa;
+		snprintf(tx, sizeof(tx), "P=%luPa\r\n", (unsigned long)p);
+		Protocol_SendString(tx);
+	}
+	/* Commande SET_K=1234 */
+	else if (strncmp(cmd, "SET_K=", 6) == 0)
+	{
+		const char *value_str = cmd + 6;
+		int32_t k = (int32_t)atoi(value_str);  // en 1/100
+
+		g_K_centi = k;
+
+		snprintf(tx, sizeof(tx), "SET_K=OK\r\n");
+		Protocol_SendString(tx);
+	}
+	/* Commande GET_K : K=12.34000  (K en 1/100, mais affiché avec 5 décimales) */
+	else if (strncmp(cmd, "GET_K", 5) == 0)
+	{
+		int32_t k = g_K_centi; // ex : 1234 -> 12.34
+		int32_t k_int  = k / 100;
+		int32_t k_frac = k % 100;
+		if (k_frac < 0) k_frac = -k_frac;
+
+		/* Format demandé : K=12.34000 (2 décimales réelles + 3 zéros) */
+		snprintf(tx, sizeof(tx), "K=%ld.%02ld000\r\n",
+				(long)k_int, (long)k_frac);
+		Protocol_SendString(tx);
+	}
+	/* Commande GET_A : A=125.7000 (angle sur 10 caractères)
+	 * Pour le moment, angle stocké en 0.001 deg (milli-deg)
+	 */
+	else if (strncmp(cmd, "GET_A", 5) == 0)
+	{
+		int32_t a = g_angle_milli;  // ex: 125700 -> 125.700 deg
+		int32_t a_int  = a / 1000;
+		int32_t a_frac = a % 1000;
+		if (a_frac < 0) a_frac = -a_frac;
+
+		/* Format : A=xxx.yyyy  -> ici : 3 décimales, on complète avec un zéro */
+		/* Exemple : 125.7000 */
+		snprintf(tx, sizeof(tx), "A=%ld.%03ld0\r\n",
+				(long)a_int, (long)a_frac);
+		Protocol_SendString(tx);
+	}
+	/* Commande inconnue */
+	else
+	{
+		snprintf(tx, sizeof(tx), "ERR=CMD\r\n");
+		Protocol_SendString(tx);
+	}
+}
+/**
+ * @brief  À appeler régulièrement dans la boucle principale.
+ *         Lit les caractères reçus sur UART1 et déclenche le traitement
+ *         quand une ligne complète est reçue (terminée par \r ou \n).
+ */
+static void Protocol_UART1_Task(void)
+{
+	uint8_t ch;
+
+	/* Lecture non bloquante : timeout = 0 */
+	if (HAL_UART_Receive(&huart1, &ch, 1, 0) == HAL_OK)
+	{
+		if (ch == '\r' || ch == '\n')
+		{
+			/* Fin de commande */
+			if (g_cmd_idx > 0)
+			{
+				g_cmd_buf[g_cmd_idx] = '\0';
+				Protocol_HandleCommand(g_cmd_buf);
+				g_cmd_idx = 0;
+			}
+		}
+		else
+		{
+			/* Accumulation dans le buffer */
+			if (g_cmd_idx < CMD_BUF_LEN - 1)
+			{
+				g_cmd_buf[g_cmd_idx++] = (char)ch;
+			}
+			else
+			{
+				/* Overflow : on reset le buffer */
+				g_cmd_idx = 0;
+			}
+		}
+	}
+}
 
 /* USER CODE END 0 */
 
@@ -105,111 +267,32 @@ int main(void)
 	MX_I2C1_Init();
 	MX_USART1_UART_Init();
 	/* USER CODE BEGIN 2 */
-	BMP280_HandleTypedef bmp;
-	HAL_StatusTypeDef ret;
-	uint8_t id = 0;
+	/* USER CODE END 2 */
+	printf("\r\n=== Init capteurs ===\r\n");
 
-	printf("\r\n=== BMP280: init ===\r\n");
-
-	ret = BMP280_Init(&bmp, &hi2c1, BMP280_I2C_ADDR_DEFAULT);
-	if (ret != HAL_OK)
+	if (BMP280_Init(&bmp, &hi2c1, BMP280_I2C_ADDR_DEFAULT) != HAL_OK)
 	{
-		printf("Erreur init BMP280 (ret = %d)\r\n", ret);
+		printf("Erreur init BMP280\r\n");
 	}
 
-	BMP280_ReadID(&bmp, &id);
-	printf("ID BMP280 = 0x%02X (attendu 0x58)\r\n", id);
+	if (mpu9250_init() != HAL_OK)
+	{
+		printf("Erreur init MPU9250\r\n");
+	}
 
-	uint32_t raw_temp, raw_press;
-	BMP280_S32_t T;
-	BMP280_U32_t P;
-
-
-
-    printf("\r\n=== MPU9250: init ===\r\n");
-    if (mpu9250_init() != HAL_OK)
-    {
-        printf("Erreur init MPU9250\r\n");
-        Error_Handler();
-    }
-	/* USER CODE END 2 */
+	printf("=== Protocole UART1 pret (Raspberry Pi) ===\r\n");
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 	while (1)
 	{
-		// BPU280
-		BMP280_ReadRaw(&bmp, &raw_temp, &raw_press);
+        /* Mise à jour périodique des capteurs */
+        Sensors_Update();
 
-		T = BMP280_Compensate_T_int32(&bmp, (BMP280_S32_t)raw_temp);
-		P = BMP280_Compensate_P_int32(&bmp, (BMP280_S32_t)raw_press);
+        /* Traitement des commandes reçues sur UART1 */
+        Protocol_UART1_Task();
 
-		int32_t temp_centi = (int32_t)T;
-		int32_t temp_int   = temp_centi / 100;
-		int32_t temp_frac  = temp_centi % 100;
-		if (temp_frac < 0) temp_frac = -temp_frac;
-
-		uint32_t press_pa      = (uint32_t)P;
-		uint32_t press_hpa_int = press_pa / 100;
-		uint32_t press_hpa_fr  = press_pa % 100;
-
-		printf("T = %ld.%02ld C,  P = %lu.%02lu hPa (%lu Pa)\r\n",
-				(long)temp_int,
-				(long)temp_frac,
-				(unsigned long)press_hpa_int,
-				(unsigned long)press_hpa_fr,
-				(unsigned long)press_pa);
-
-		// MPU9250
-		if (mpu9250_read_raw(&imu) == HAL_OK)
-		{
-			mpu9250_convert_accel_mg(&imu, &ax_mg, &ay_mg, &az_mg);
-			mpu9250_convert_gyro_mdps(&imu, &gx_mdps, &gy_mdps, &gz_mdps);
-
-			/* Affichage lisible sans float :
-			 * mg -> afficher en g avec 3 décimales
-			 * mdps -> afficher en deg/s avec 3 décimales
-			 */
-			int32_t ax_g_int   = ax_mg / 1000;
-			int32_t ax_g_frac  = ax_mg % 1000;
-			if (ax_g_frac < 0) ax_g_frac = -ax_g_frac;
-
-			int32_t ay_g_int   = ay_mg / 1000;
-			int32_t ay_g_frac  = ay_mg % 1000;
-			if (ay_g_frac < 0) ay_g_frac = -ay_g_frac;
-
-			int32_t az_g_int   = az_mg / 1000;
-			int32_t az_g_frac  = az_mg % 1000;
-			if (az_g_frac < 0) az_g_frac = -az_g_frac;
-
-			int32_t gx_dps_int = gx_mdps / 1000;
-			int32_t gx_dps_frac= gx_mdps % 1000;
-			if (gx_dps_frac < 0) gx_dps_frac = -gx_dps_frac;
-
-			int32_t gy_dps_int = gy_mdps / 1000;
-			int32_t gy_dps_frac= gy_mdps % 1000;
-			if (gy_dps_frac < 0) gy_dps_frac = -gy_dps_frac;
-
-			int32_t gz_dps_int = gz_mdps / 1000;
-			int32_t gz_dps_frac= gz_mdps % 1000;
-			if (gz_dps_frac < 0) gz_dps_frac = -gz_dps_frac;
-
-			printf("ACC (g):  X=%ld.%03ld  Y=%ld.%03ld  Z=%ld.%03ld\r\n",
-					(long)ax_g_int, (long)ax_g_frac,
-					(long)ay_g_int, (long)ay_g_frac,
-					(long)az_g_int, (long)az_g_frac);
-
-			printf("GYRO(dps): X=%ld.%03ld  Y=%ld.%03ld  Z=%ld.%03ld\r\n",
-					(long)gx_dps_int, (long)gx_dps_frac,
-					(long)gy_dps_int, (long)gy_dps_frac,
-					(long)gz_dps_int, (long)gz_dps_frac);
-		}
-		else
-		{
-			printf("Erreur lecture MPU9250\r\n");
-		}
-
-		HAL_Delay(500);
+        HAL_Delay(50);  // ~20 Hz
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */

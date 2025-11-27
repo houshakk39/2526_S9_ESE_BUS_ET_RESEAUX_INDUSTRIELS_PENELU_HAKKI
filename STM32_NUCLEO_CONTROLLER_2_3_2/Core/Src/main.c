@@ -129,7 +129,7 @@ void bmp280_configure(void)
 
 	if (ret != HAL_OK)
 	{
-		printf("Erreur I2 lecture\r\n", ret);
+		printf("Erreur I2 lecture\r\n");
 		return;
 	}
 
