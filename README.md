@@ -173,13 +173,33 @@ UART2 est configuré en mode **Asynchronous** à **115200 bauds**, ce qui permet
 
 
 Teste de ce printf avec un programme de type echo.
+
+```c
+	/* USER CODE BEGIN 2 */
+
+	printf("=== Test UART2 Echo ===\r\n");
+	printf("Tapez quelque chose...\r\n");
+
+	uint8_t rx_char;
+	/* USER CODE END 2 */
+
+	/* Infinite loop */
+	/* USER CODE BEGIN WHILE */
+	while (1)
+	{
+		if (HAL_UART_Receive(&huart2, &rx_char, 1, HAL_MAX_DELAY) == HAL_OK)
+		{
+			HAL_UART_Transmit(&huart2, &rx_char, 1, HAL_MAX_DELAY);
+			//printf("%c", rx_char);
+		}
+		/* USER CODE END WHILE */
+```
+
 ####  Pourquoi dans stm32f4xx_hal_msp.c ?
 Sur un STM32 :
 - Le fichier MSP est le bon endroit pour mettre les fonctions de bas niveau utilisées par HAL
 - Il est chargé avant le main, donc printf fonctionne dès le début
 - Il n’est pas écrasé par CubeMX contrairement à main.c
 - La HAL appelle automatiquement les fonctions MSP grâce au faible linkage (__weak)
-```c
-printf("Hello\n");
-```
+
 
