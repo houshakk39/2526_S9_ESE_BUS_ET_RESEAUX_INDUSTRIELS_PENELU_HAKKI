@@ -378,3 +378,5 @@ Voir la capture suivante montrant :
 * Le registre CTRL_MEAS configuré et confirmé
 
 ![Figure Config](Photos/regID_config.png)
+
+# 3.1 mise en route du raspberry py 
