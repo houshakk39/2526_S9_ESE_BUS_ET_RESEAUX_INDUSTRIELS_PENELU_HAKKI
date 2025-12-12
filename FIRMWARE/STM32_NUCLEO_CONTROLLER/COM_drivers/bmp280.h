@@ -25,17 +25,17 @@ typedef uint32_t BMP280_U32_t;
  * -------------------------------------------------------------------------- */
 
 /* Adresse I2C par défaut du BMP280 (SDO connecté à VDDIO -> 0x77) */
-#define BMP280_I2C_ADDR_DEFAULT   (0x77u << 1)
+#define BMP280_I2C_ADDR_DEFAULT   (0x77 << 1)
 
 /* Registres principaux */
-#define BMP280_REG_ID             0xD0u
-#define BMP280_REG_CTRL_MEAS      0xF4u
-#define BMP280_REG_CALIB_START    0x88u
-#define BMP280_CALIB_LENGTH       26u    /* 0x88 -> 0xA1 inclus */
-#define BMP280_REG_PRESS_TEMP     0xF7u  /* début des registres press/temp */
+#define BMP280_REG_ID             0xD0
+#define BMP280_REG_CTRL_MEAS      0xF4
+#define BMP280_REG_CALIB_START    0x88
+#define BMP280_CALIB_LENGTH       26    /* 0x88 -> 0xA1 inclus */
+#define BMP280_REG_PRESS_TEMP     0xF7  /* début des registres press/temp */
 
 /* Valeur attendue dans le registre ID pour un BMP280 */
-#define BMP280_CHIP_ID            0x58u
+#define BMP280_CHIP_ID            0x58
 
 /* Valeur de configuration "par défaut" :
  *  - mode normal
@@ -43,7 +43,7 @@ typedef uint32_t BMP280_U32_t;
  *  - oversampling température x2
  * (voir datasheet : registre CTRL_MEAS)
  */
-#define BMP280_CTRL_MEAS_DEFAULT  0x57u
+#define BMP280_CTRL_MEAS_DEFAULT  0x57
 
 /* --------------------------------------------------------------------------
  * Structure des coefficients d'étalonnage (datasheet BMP280)
