@@ -26,6 +26,7 @@
 #include "sensors_app.h"
 #include "rpi_protocol.h"
 #include "stepper_can.h"
+#include "valve_control.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -112,33 +113,46 @@ int main(void)
 	/* Capteurs */
 	(void)SensorsApp_Init(&hi2c1);
 
-	/* CAN */
-	(void)StepperCAN_Init(&hcan1);
-	StepperCAN_SetBaseId(STEPPER_CAN_BASE_0x60);
+	printf("\r\n=== Init CAN (500 kbit/s) ===\r\n");
+
+	if (StepperCAN_Init(&hcan1) != HAL_OK)
+	{
+		printf("Erreur init CAN\r\n");
+	}
+	else
+	{
+		StepperCAN_SetBaseId(STEPPER_CAN_BASE_0x60);
+
+		/* IMPORTANT :
+		 * Réinitialisation de la position moteur au démarrage
+		 */
+		StepperCAN_SetZero();
+		HAL_Delay(200);  /* laisse le temps à la carte moteur */
+
+		printf("CAN OK - Position moteur remise à zero\r\n");
+	}
 
 	/* Protocole Raspberry (UART1) */
 	RpiProto_Init(&huart1, SensorsApp_GetState());
 
-	(void)StepperCAN_SetZero();
-	    HAL_Delay(200);
-    /* Exemple : aller à -90° */
-    (void)StepperCAN_SetAngle(90, STEPPER_SIGN_NEG);
-    HAL_Delay(1500);
+	ValveControl_Init();
 
-    /* Exemple : mode manuel CW, 30°, speed=10ms */
-    (void)StepperCAN_ManualMove(STEPPER_DIR_CW, 45, 10);
-    HAL_Delay(1500);
-
-    printf("Test CAN envoye (SetZero, Angle -90, Manual CW 30deg)\r\n");
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 	while (1)
 	{
+		const sensors_state_t *st = SensorsApp_GetState();
+
 		SensorsApp_Update();
 		RpiProto_Task();
+
+		/* Contrôle vanne selon T et K */
+		ValveControl_Update(st->temp_centi, RpiProto_GetK_centi());
+
 		HAL_Delay(50);
+
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */

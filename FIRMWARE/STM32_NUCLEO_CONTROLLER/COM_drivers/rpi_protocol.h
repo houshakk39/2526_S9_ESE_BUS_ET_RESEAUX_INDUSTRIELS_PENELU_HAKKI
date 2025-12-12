@@ -33,5 +33,8 @@ void RpiProto_OnRxByte(uint8_t ch);
  */
 void RpiProto_Task(void);
 
+int32_t RpiProto_GetK_centi(void);
+
+
 #endif /* RPI_PROTOCOL_H_ */
 

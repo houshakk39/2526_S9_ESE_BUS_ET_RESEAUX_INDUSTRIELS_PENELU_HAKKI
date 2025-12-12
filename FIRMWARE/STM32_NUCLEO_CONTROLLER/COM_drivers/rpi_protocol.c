@@ -15,7 +15,7 @@ static UART_HandleTypeDef *s_huart = NULL;
 static const sensors_state_t *s_state = NULL;
 
 /* Coefficient K en 1/100 */
-static volatile int32_t s_K_centi = 100; /* 1.00 */
+static volatile int32_t s_K_centi = 500; /* 1.00 */
 
 /* Buffer commande */
 #define CMD_BUF_LEN 32
@@ -149,6 +149,11 @@ void RpiProto_Task(void)
         g_cmd_ready = 0;
         Proto_HandleCommand(g_cmd_buf);
     }
+}
+
+int32_t RpiProto_GetK_centi(void)
+{
+    return s_K_centi;
 }
 
 /* IMPORTANT:
