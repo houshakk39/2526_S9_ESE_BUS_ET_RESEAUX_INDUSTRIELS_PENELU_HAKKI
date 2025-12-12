@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include "bmp280.h"
 #include "mpu9250.h"
+#include "stepper_can.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -244,24 +245,63 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 	/* USER CODE BEGIN 2 */
-	printf("\r\n=== Init capteurs ===\r\n");
+  printf("\r\n=== Init capteurs ===\r\n");
 
-	if (BMP280_Init(&bmp, &hi2c1, BMP280_I2C_ADDR_DEFAULT) != HAL_OK)
-	{
-		printf("Erreur init BMP280\r\n");
-	}
+  /* -----------------------------
+   * I2C Capteurs
+   * ----------------------------- */
+  if (BMP280_Init(&bmp, &hi2c1, BMP280_I2C_ADDR_DEFAULT) != HAL_OK)
+  {
+    printf("Erreur init BMP280\r\n");
+  }
 
-	if (mpu9250_init() != HAL_OK)
-	{
-		printf("Erreur init MPU9250\r\n");
-	}
+  if (mpu9250_init() != HAL_OK)
+  {
+    printf("Erreur init MPU9250\r\n");
+  }
 
-	/* Iniciar recepção por interrupção em UART1 (Raspberry) e UART2 (terminal) */
-	HAL_UART_Receive_IT(&huart1, &uart1_rx_byte, 1);
-	HAL_UART_Receive_IT(&huart2, &uart2_rx_byte, 1);
+  /* -----------------------------
+   * UART (PC + Raspberry)
+   * ----------------------------- */
+  HAL_UART_Receive_IT(&huart1, &uart1_rx_byte, 1);
+  HAL_UART_Receive_IT(&huart2, &uart2_rx_byte, 1);
 
-	printf("=== Protocole UART1 pret (Raspberry Pi) ===\r\n");
+  printf("=== Protocole UART1 pret (Raspberry Pi) ===\r\n");
 
+  /* -----------------------------
+   * CAN (TP5.1) - Start bus
+   * ----------------------------- */
+  printf("\r\n=== Init CAN (500 kbit/s) ===\r\n");
+
+  if (StepperCAN_Init(&hcan1) != HAL_OK)
+  {
+    printf("Erreur init CAN\r\n");
+  }
+  else
+  {
+    /* Ajuste conforme SW1/SW2 na placa moteur :
+     * 00 -> base 0x60 (IDs 0x60/0x61/0x62)
+     * 10 -> base 0x70
+     * 01 -> base 0x80
+     * 11 -> base 0x90
+     */
+    StepperCAN_SetBaseId(STEPPER_CAN_BASE_0x60);
+    printf("CAN OK. Base ID = 0x60\r\n");
+
+    /* Petit test 5.1 (à adapter selon consigne du TP) */
+    (void)StepperCAN_SetZero();
+    HAL_Delay(200);
+
+    /* Exemple : aller à -90° */
+    (void)StepperCAN_SetAngle(90, STEPPER_SIGN_NEG);
+    HAL_Delay(1500);
+
+    /* Exemple : mode manuel CW, 30°, speed=10ms */
+    (void)StepperCAN_ManualMove(STEPPER_DIR_CW, 45, 10);
+    HAL_Delay(1500);
+
+    printf("Test CAN envoye (SetZero, Angle -90, Manual CW 30deg)\r\n");
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -352,11 +392,11 @@ static void MX_CAN1_Init(void)
 
   /* USER CODE END CAN1_Init 1 */
   hcan1.Instance = CAN1;
-  hcan1.Init.Prescaler = 16;
+  hcan1.Init.Prescaler = 6;
   hcan1.Init.Mode = CAN_MODE_NORMAL;
   hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan1.Init.TimeSeg1 = CAN_BS1_1TQ;
-  hcan1.Init.TimeSeg2 = CAN_BS2_1TQ;
+  hcan1.Init.TimeSeg1 = CAN_BS1_11TQ;
+  hcan1.Init.TimeSeg2 = CAN_BS2_2TQ;
   hcan1.Init.TimeTriggeredMode = DISABLE;
   hcan1.Init.AutoBusOff = DISABLE;
   hcan1.Init.AutoWakeUp = DISABLE;
