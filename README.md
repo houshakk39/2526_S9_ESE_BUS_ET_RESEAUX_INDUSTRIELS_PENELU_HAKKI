@@ -331,16 +331,28 @@ Suite à cette première version, le serveur a été réécrit en **FastAPI** po
 * **Code concis** : Syntaxe plus moderne et moins verbeuse pour les API.
 
 ---
+
 ## 5. TP4 – Bus CAN
 
 ### Objectif
-Piloter un moteur pas-à-pas via le bus CAN, en utilisant un transceiver TJA1050. Le STM32 initialise le contrôleur CAN, envoie des trames CAN standard et ajuste l’angle moteur proportionnellement à une valeur de capteur. La vitesse du bus a été réglée à **500 kbit/s** pour être compatible avec la carte moteur.
 
-### 5.1 Détails de l'implémentation CAN
-Pour piloter le moteur, le STM32 envoie des trames sur le bus CAN. La bibliothèque HAL de ST facilite la construction de ces trames.
+L’objectif de ce TP est de piloter un moteur pas-à-pas via le **bus CAN**, en utilisant un transceiver **TJA1050**.  
+Le STM32 initialise le contrôleur CAN, envoie des trames CAN standard et ajuste la position du moteur en fonction d’une consigne calculée à partir d’une valeur de capteur.
 
-#### Structure de la trame CAN
-La trame est définie à l'aide de la structure `CAN_TxHeaderTypeDef`.
+La vitesse du bus CAN est configurée à **500 kbit/s**, afin d’être compatible avec la carte moteur utilisée.
+
+---
+
+## 5.1. Détails de l’implémentation CAN
+
+Pour piloter le moteur, le STM32 envoie des **trames CAN standard (11 bits)** sur le bus CAN.  
+La bibliothèque **HAL** de ST est utilisée pour construire et transmettre ces trames.
+
+---
+
+### Structure de la trame CAN
+
+La structure de la trame est définie à l’aide de la structure `CAN_TxHeaderTypeDef` fournie par la HAL.
 
 ```c
 static HAL_StatusTypeDef StepperCAN_SendStd(uint16_t std_id,
@@ -349,44 +361,99 @@ static HAL_StatusTypeDef StepperCAN_SendStd(uint16_t std_id,
 {
     CAN_TxHeaderTypeDef txh;
     uint32_t tx_mailbox;
+
     txh.StdId = std_id;
     txh.ExtId = 0;
     txh.IDE   = CAN_ID_STD;
     txh.RTR   = CAN_RTR_DATA;
     txh.DLC   = dlc;
     txh.TransmitGlobalTime = DISABLE;
-    return HAL_CAN_AddTxMessage(&hcan1, &txh, (uint8_t*)data, &tx_mailbox);
-}
-```
-**Explication des champs :**
-?????
-- `StdId`: L'identifiant standard du message sur 11 bits. C'est ce qui permet au bon nœud (le moteur) de reconnaître le message qui lui est destiné.
-- `IDE`: Indique si l'ID est standard (11 bits) ou étendu (29 bits).
-- `RTR`: Définit si la trame transporte des données (`CAN_RTR_DATA`) ou si c'est une "Remote Transmission Request" pour demander des données.
-- `DLC` (Data Length Code): Le nombre d'octets de données utiles dans la trame (de 0 à 8).
 
-#### Contenu de la trame (payload)
-main:
+    return HAL_CAN_AddTxMessage(&hcan1, &txh,
+                                (uint8_t*)data,
+                                &tx_mailbox);
+}
+````
+
+---
+
+### Explication des champs
+
+* **StdId** :
+  Identifiant standard du message (11 bits). Il permet à la carte moteur de reconnaître les trames qui lui sont destinées.
+
+* **IDE** :
+  Sélection du type d’identifiant. Ici, `CAN_ID_STD` indique un identifiant standard (11 bits).
+
+* **RTR** :
+  Indique le type de trame. `CAN_RTR_DATA` signifie que la trame transporte des données.
+
+* **DLC (Data Length Code)** :
+  Nombre d’octets de données utiles contenus dans la trame (entre 0 et 8).
+
+* **TransmitGlobalTime** :
+  Fonction non utilisée dans ce projet, désactivée.
+
+---
+
+### Contenu de la trame (payload)
+
+Le contenu du champ *data* dépend de la commande envoyée à la carte moteur :
+
+* remise à zéro de la position,
+* commande angulaire absolue,
+* commande de mouvement manuel.
+
+La construction du payload est entièrement gérée par le driver **`stepper_can`**, ce qui permet d’isoler les détails du protocole CAN du reste de l’application.
+
+---
+
+### Initialisation du bus CAN et du moteur
+
+Dans la fonction `main`, le bus CAN est initialisé une seule fois au démarrage du STM32.
 
 ```c
 printf("\r\n=== Init CAN (500 kbit/s) ===\r\n");
-	if (StepperCAN_Init(&hcan1) != HAL_OK)
-	{
-		printf("Erreur init CAN\r\n");
-	}
-	else
-	{
-		StepperCAN_SetBaseId(STEPPER_CAN_BASE_0x60);
-		/* IMPORTANT :
-		 * Réinitialisation de la position moteur au démarrage
-		 */
-		StepperCAN_SetZero();
-		HAL_Delay(200);  /* laisse le temps à la carte moteur */
-		printf("CAN OK - Position moteur remise à zero\r\n");
-	}
+
+if (StepperCAN_Init(&hcan1) != HAL_OK)
+{
+    printf("Erreur init CAN\r\n");
+}
+else
+{
+    StepperCAN_SetBaseId(STEPPER_CAN_BASE_0x60);
+
+    /* IMPORTANT :
+     * Réinitialisation de la position moteur au démarrage
+     */
+    StepperCAN_SetZero();
+    HAL_Delay(200);  /* laisse le temps à la carte moteur */
+
+    printf("CAN OK - Position moteur remise à zero\r\n");
+}
 ```
-[driver stepper driver]()
-????
+
+La fonction `StepperCAN_SetZero()` est essentielle afin de définir une référence angulaire cohérente.
+Sans cette initialisation, les commandes de position absolue ne seraient pas fiables après un redémarrage du microcontrôleur.
+
+---
+
+### Organisation du driver moteur
+
+Le pilotage du moteur pas-à-pas via CAN est regroupé dans le module suivant :
+
+```
+COM_drivers/valve/
+├── stepper_can.c
+└── stepper_can.h
+```
+
+Ce module fournit une interface simple pour :
+
+* initialiser le bus CAN,
+* envoyer des commandes moteur,
+* masquer les détails du protocole CAN au reste de l’application.
+[driver stepper driver](FIRMWARE/STM32_NUCLEO_CONTROLLER/COM_drivers/valve/stepper_can.c)
 
 ---
 
