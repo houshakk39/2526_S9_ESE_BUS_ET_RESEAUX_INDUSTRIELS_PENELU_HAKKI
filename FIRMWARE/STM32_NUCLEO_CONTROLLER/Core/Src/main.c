@@ -110,6 +110,7 @@ int main(void)
 	MX_I2C1_Init();
 	MX_USART1_UART_Init();
 	/* USER CODE BEGIN 2 */
+
 	/* Capteurs */
 	(void)SensorsApp_Init(&hi2c1);
 

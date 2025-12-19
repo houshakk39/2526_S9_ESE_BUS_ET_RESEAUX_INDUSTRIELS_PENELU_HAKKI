@@ -11,7 +11,7 @@
 #include "main.h"
 #include <stdint.h>
 #include <stdbool.h>
-#include "sensors_app.h"
+#include "../sensors/sensors_app.h"
 
 /**
  * @brief Initialise le protocole UART vers Raspberry Pi.

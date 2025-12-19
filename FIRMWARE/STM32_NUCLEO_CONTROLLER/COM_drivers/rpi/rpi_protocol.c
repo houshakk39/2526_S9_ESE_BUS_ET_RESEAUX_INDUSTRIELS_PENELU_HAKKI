@@ -155,11 +155,3 @@ int32_t RpiProto_GetK_centi(void)
 {
     return s_K_centi;
 }
-
-/* IMPORTANT:
- * Dans HAL_UART_RxCpltCallback(), après avoir appelé RpiProto_OnRxByte(),
- * il faut relancer HAL_UART_Receive_IT() avec s_rx_byte.
- *
- * On le fait ici en exposant s_rx_byte via la même unité: on relance
- * dans le callback utilisateur (voir plus bas dans main.c).
- */
