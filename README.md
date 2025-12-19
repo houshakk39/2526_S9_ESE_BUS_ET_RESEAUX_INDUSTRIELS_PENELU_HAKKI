@@ -465,7 +465,8 @@ Intégrer tous les modules précédents : I²C (capteurs), UART (STM32 ↔ RPi),
 
 ### 6.2 API REST finale (FastAPI)
 L'API finale expose plusieurs routes pour interagir avec le STM32. Chaque requête REST déclenche **au moins une commande série réelle** vers le microcontrôleur. Les valeurs sont stockées dans des variables globales Python, conformément au cahier des charges.
-[fastapy.py](FIRMWARE/python/???)
+[fastapy.py](FIRMWARE/python/fastapi.py)
+
 #### Modèles de données (Pydantic)
 La validation est assurée par des modèles Pydantic qui garantissent la structure des données entrantes.
 ```python
