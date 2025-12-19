@@ -507,7 +507,7 @@ L'intégration finale a été validée via plusieurs méthodes :
 
 L'ensemble du système s'est avéré **fonctionnel et stable**.
 
-![pageweb](Photos/TP5-I2C - Serial - REST - CAN - Swagger-UI.png)
+![Page Web – Swagger UI](Photos/tp5.png)
 
 ---
 ## 8. Conclusion
