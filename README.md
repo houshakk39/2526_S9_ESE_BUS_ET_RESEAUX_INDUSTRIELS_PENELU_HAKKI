@@ -120,10 +120,11 @@ PUTCHAR_PROTOTYPE
 }
 ```
 Un test avec un programme d'écho a validé la configuration.
+
 ![Figure 15](Photos/echo.png)
 
 ### 2.3 Communication I²C et Validation
-Les fonctions HAL (`HAL_I2C_Mem_Read`, `HAL_I2C_Mem_Write`) sont utilisées pour communiquer avec le BMP280.
+Les fonctions HAL (`HAL_I2C_Mem_Read`, `HAL_I2C_Mem_Write`) sont utilisées pour communiquer avec le BMP280. on prend les données brutes comme l'image suivante:
 
 ![raw_temp_cap](Photos/raw_temp_cap.png)
 
@@ -507,6 +508,7 @@ L'intégration finale a été validée via plusieurs méthodes :
 L'ensemble du système s'est avéré **fonctionnel et stable**.
 
 ![pageweb](Photos/TP5-I2C - Serial - REST - CAN - Swagger-UI.png)
+
 ---
 ## 8. Conclusion
 Cette série de TP a permis de mettre en œuvre une **architecture embarquée complète**, réaliste et modulaire. Elle combine des bus de terrain (I²C, CAN), une communication inter-cartes (UART) et des technologies réseau modernes (API REST). Le projet respecte strictement le sujet ENSEA et constitue une excellente base pratique pour la conception d'applications **IoT industrielles**.
